@@ -26,7 +26,8 @@ indexing on one side, sentence-level claim verification on the other, and a
 
 ## Results (held-out test split)
 
-Corpus: 10 pinned Wikipedia documents (6 Arabic, 4 English), 585 chunks.
+Corpus: 10 Wikipedia documents (6 Arabic, 4 English), 585 chunks; the revision
+each was materialized at is recorded in the manifest.
 Generation: `qwen2.5:7b`, top-k 5. Full report:
 [`reports/e2e-test-final.md`](reports/e2e-test-final.md).
 
@@ -115,12 +116,17 @@ Key decisions:
 
 ## Corpus and evaluation design
 
-`corpus/` holds 10 Wikipedia articles fetched with pinned revision IDs by
+`corpus/` holds 10 Wikipedia articles fetched by
 [`scripts/fetch_corpus.py`](scripts/fetch_corpus.py); each document's URL,
 revision, timestamp and CC BY-SA 4.0 license are recorded in
 [`corpus/manifest.json`](corpus/manifest.json). The article text is not
-committed (it is CC BY-SA data, not code); the fetch script materializes it and
-re-running it fetches the same revisions. The manifest is committed.
+committed (it is CC BY-SA data, not code); the fetch script materializes it.
+The manifest records the revision each document was materialized at, so the
+committed reports stay pinned to a known snapshot. The TextExtracts API serves
+current plaintext even for an explicit revision id, so the script cannot
+re-download old text; instead it prints a `DRIFT` line when a recorded revision
+has moved, which is the signal to re-run `citerum validate` before trusting the
+gold labels.
 
 [`eval/questions.jsonl`](eval/questions.jsonl) contains 50 hand-written
 questions: 40 answerable across Arabic and English, 10 unanswerable (the
@@ -157,7 +163,7 @@ python -m pip install -e ".[dev]"
 ollama pull bge-m3
 ollama pull qwen2.5:7b
 
-python scripts/fetch_corpus.py   # pinned Wikipedia revisions
+python scripts/fetch_corpus.py   # materialize the recorded snapshot
 citerum ingest                     # build data/citerum.db (585 chunks, ~8s warm)
 citerum ask "كم عدد محطات مترو الرياض؟" -k 5 --show-sources
 citerum eval --split test -k 5 --generate \
@@ -221,7 +227,7 @@ grounding: 1.00 (1/1 sentences)
 | `citerum/pipeline.py` | retrieve → generate → verify → repair/abstain |
 | `citerum/evaluate.py` | dataset validation, metrics, report rendering |
 | `citerum/cli.py` | `citerum` command line |
-| `scripts/fetch_corpus.py` | pinned Wikipedia corpus fetch |
+| `scripts/fetch_corpus.py` | Wikipedia corpus fetch with revision recording |
 | `eval/questions.jsonl` | 50 gold-labeled questions |
 | `reports/` | measured evaluation reports |
 | `tests/` | 106 tests (105 offline + 1 live) |
