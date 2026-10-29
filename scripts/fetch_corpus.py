@@ -1,9 +1,15 @@
 """Fetch the bilingual evaluation corpus from Wikipedia (CC BY-SA 4.0).
 
 Why a snapshot instead of live calls at query time:
-- Reproducibility: the same revision is ingested on every machine.
 - Offline operation: the demo never depends on Wikipedia being reachable.
 - Attribution: page URL, revision id and license are stored per document.
+- Drift detection: the manifest records the revision that was materialized;
+  a later fetch reports when that revision has moved so the gold labels can
+  be re-validated instead of silently aging.
+
+Note: the TextExtracts API returns the current plaintext even when a revision
+id is requested, so the recorded revision is a provenance marker, not a way to
+re-fetch old text. The manifest pins what the committed reports measured.
 
 Usage:
     python scripts/fetch_corpus.py            # fetch missing documents
@@ -83,12 +89,18 @@ def main() -> int:
         if target.exists() and not args.force and spec["id"] in known:
             print(f"skip  {spec['id']} (exists)")
             continue
+        old_text = target.read_text(encoding="utf-8") if target.exists() else None
         try:
             page = fetch(spec["lang"], spec["title"])
         except Exception as exc:  # network/API errors should not corrupt the manifest
             print(f"FAIL  {spec['id']}: {exc}")
             continue
         target.write_text(page["text"], encoding="utf-8")
+        recorded = known.get(spec["id"], {}).get("revision")
+        if recorded is not None and recorded != page["revision"]:
+            state = "text unchanged" if old_text == page["text"] else "text changed"
+            print(f"DRIFT {spec['id']}: revision {recorded} -> {page['revision']} ({state}); "
+                  "re-run `citerum validate` before trusting the gold labels")
         known[spec["id"]] = {
             "id": spec["id"],
             "lang": spec["lang"],
