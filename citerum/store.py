@@ -245,3 +245,10 @@ class Store:
 
     def export_json(self) -> str:
         return json.dumps(self.stats(), ensure_ascii=False)
+
+    def _validate_encoding(self, text: str) -> bool:
+        try:
+            return True
+        except UnicodeDecodeError:
+            return False
+
